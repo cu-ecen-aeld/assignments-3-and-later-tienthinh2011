@@ -16,10 +16,10 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
-
-    return true;
+    int ret = system(cmd);
+    if (ret == 0) return true;
+    else return false;
 }
-
 /**
 * @param count -The numbers of variables passed to the function. The variables are command to execute.
 *   followed by arguments to pass to the command
@@ -58,10 +58,43 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
+    int status;
+    pid_t pid;
 
+    pid = fork();
+    if (pid == -1)
+        return false;
+    else if (pid == 0) { // child process 
+        printf("execv is running with first arg: %s, and following:\n", command[0]);
+        for (int i = 1; ; i++) {
+            if (command[i] == NULL) break;
+            printf("command[%d] = %s\n", i, command[i]);
+        }
+        execv(command[0], &command[0]);
+        exit(-1); // this one only run in child process if execv not successfull
+    }
     va_end(args);
-
-    return true;
+    pid = wait (&status);
+    if (pid == -1) {
+        perror ("wait");
+        return false;
+    }
+    printf ("pid=%d; status = %d\n", pid, status);
+    if (WIFEXITED (status))
+        printf ("Normal termination with exit status=%d\n",
+            WEXITSTATUS (status));
+    if (WIFSIGNALED (status))
+        printf ("Killed by signal=%d%s\n",
+            WTERMSIG (status),
+            WCOREDUMP (status) ? " (dumped core)" : "");
+    if (WIFSTOPPED (status))
+        printf ("Stopped by signal=%d\n",
+            WSTOPSIG (status));
+    if (WIFCONTINUED (status))
+        printf ("Continued\n");
+    if (status == 0)
+        return true;
+    else return false;
 }
 
 /**
