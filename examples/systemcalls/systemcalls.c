@@ -127,29 +127,18 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     
     int status;
     pid_t pid;
-
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    fflush(stdout);
     pid = fork();
     if (pid == -1)
         return false;
     else if (pid == 0) { // child process 
-        char * newcommand[count+1];
-        int i;
-        for(i=0; i<count; i++) {
-            if (i!= count-1) {
-                newcommand[i] = command[i];
-            } else  {
-                newcommand[i] = malloc(strlen(command[i]) + strlen(outputfile) + 5);
-                sprintf(newcommand[i],"%s > %s", command[i], outputfile);
-            }
-        }
-        newcommand[count] = NULL;
-        printf("execv is running with first arg: %s, and following:\n", newcommand[0]);
-        for (int i = 1; ; i++) {
-            if (newcommand[i] == NULL) break;
-            printf("newcommand[%d] = %s\n", i, newcommand[i]);
-        }
-        execv(newcommand[0], &newcommand[0]);
+        if (dup2(fd, 1) < 0) { perror("dup2"); abort(); }
+        close(fd);
+        execv(command[0], &command[0]);
         exit(-1); // this one only run in child process if execv not successfull
+    } else {
+        close(fd);
     }
     va_end(args);
     pid = wait (&status);
