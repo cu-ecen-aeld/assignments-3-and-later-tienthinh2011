@@ -21,12 +21,13 @@
 
 static bool isTerminated = false;
 static bool isAccepted = false;
-
+FILE * fd = NULL;
 static void sigHandler(int signal_number) {
     if (signal_number == SIGINT || signal_number == SIGTERM) {
         isTerminated = true;
         if (!isAccepted) {
             closelog();
+            if (fd) fclose(fd);
             exit(-1);
         }
     }
@@ -160,7 +161,7 @@ int main (int argc, char* argv[])
         exit(-1);
     } 
     printf("Listening to port:%s\n", AESD_PORT);
-
+    fd = fopen(OUT_FILE, "w+"); // open file to read and write
     // 6. Accepting the connection 
     int clientfd = 0;
     bool isClientConnected = false;
@@ -205,7 +206,7 @@ int main (int argc, char* argv[])
                     if (buffer[totalLen-1] == '\n') {
                         printf("Received full package:\n%s", buffer);
                         // Store the newline (append) to /var/tmp/aesdsocketdata
-                        FILE * fd = fopen(OUT_FILE, "a+"); // open file to read and write
+                        
                         if (fd) {
                             int ret = fprintf(fd, "%s", buffer);
                             if (ret) {
