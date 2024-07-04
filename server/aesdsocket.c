@@ -255,6 +255,7 @@ int main (int argc, char* argv[])
                 }
             }
             // Return the full content of the file /var/tmp/aesdsocketdata back to client 
+            free(buffer);
         } else {
             printf("No client connected\n");
         }
