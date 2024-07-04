@@ -206,7 +206,10 @@ int main (int argc, char* argv[])
                     if (buffer[totalLen-1] == '\n') {
                         printf("Received full package:\n%s", buffer);
                         // Store the newline (append) to /var/tmp/aesdsocketdata
-                        
+                        if (!fd) {
+                            // reopen to append
+                            fd = fopen(OUT_FILE, "a+");
+                        }
                         if (fd) {
                             int ret = fprintf(fd, "%s", buffer);
                             if (ret) {
@@ -214,6 +217,7 @@ int main (int argc, char* argv[])
                             }
                             // Re-read the file from begining and 
                             fclose(fd);
+                            fd = NULL;
                             fd = fopen(OUT_FILE, "r");
                             if (fd) {
                                 memset(buffer,0, currentMaxSize); // memset the buffer to reuse in read lin
@@ -224,6 +228,8 @@ int main (int argc, char* argv[])
                                     printf("read %d bytes from %s and sending to client\n", readBytes, OUT_FILE);
                                     send(clientfd, buffer, readBytes, 0);
                                 }
+                                fclose(fd);
+                                fd = NULL;
                             }
                         } else {
                             perror("fopen");
