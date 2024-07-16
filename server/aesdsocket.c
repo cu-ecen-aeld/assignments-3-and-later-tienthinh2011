@@ -14,9 +14,14 @@
 // signal
 #include <signal.h>
 
+#include "aesdhelper.h"
+#include "queue.h"
+
+
+#define DEBUG_LOG(msg,...) printf("aesdsocket: " msg "\n" , ##__VA_ARGS__)
+#define ERROR_LOG(msg,...) printf("aesdsocket ERROR: " msg "\n" , ##__VA_ARGS__)
 
 #define AESD_PORT "9000"
-#define INIT_BUFFER_SIZE 100
 #define OUT_FILE "/var/tmp/aesdsocketdata"
 
 static bool isTerminated = false;
@@ -61,20 +66,20 @@ int main (int argc, char* argv[])
         }
     }
     if (isDaemon) {
-        printf("aesdsocket starting programm as a deamon\n");
+        DEBUG_LOG("aesdsocket starting programm as a deamon");
         pid_t childPid = fork();
         if (childPid > 0) { // parent ID 
             // parent id 
-            printf("Parent exit let child pid: %d running\n", childPid);
+            DEBUG_LOG("Parent exit let child pid: %d running", childPid);
             exit(0);
         } else if (childPid == 0) {// child ID
-            printf("Child daemon process is running\n");
+            DEBUG_LOG("Child daemon process is running\n");
         } else {
             perror("fork");
             exit(1);
         }
     } else {
-        printf("aesdsocket starting normally\n");
+        DEBUG_LOG("aesdsocket starting normally\n");
     }
     openlog(NULL, 0, LOG_USER);
     syslog(LOG_DEBUG, "Starting aesdsocket isDaemon = %d", isDaemon);
@@ -85,7 +90,7 @@ int main (int argc, char* argv[])
     
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_INET;     // don't care IPv4 or IPv6
-    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    // hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
     hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
     if ((status = getaddrinfo(NULL, AESD_PORT, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status)); // gai_strerror only for error code of getaddrinfo function
@@ -123,7 +128,7 @@ int main (int argc, char* argv[])
         exit(1);
     } // End of ​From ​Beej's Guide to Network Programming
     #else 
-    sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
+    sockfd = socket(servinfo->ai_family, servinfo->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC , servinfo->ai_protocol);
     if (sockfd == 0) {
         fprintf(stderr, "could not create socket\n");
         exit (-1);
@@ -160,8 +165,14 @@ int main (int argc, char* argv[])
         close(sockfd);
         exit(-1);
     } 
-    printf("Listening to port:%s\n", AESD_PORT);
+    DEBUG_LOG("server is now listening to port:%s\n", AESD_PORT);
     fd = fopen(OUT_FILE, "w+"); // open file to read and write
+    if (!fd) {
+        ERROR_LOG("Cannot open file %s", OUT_FILE);
+        close(sockfd);
+        closelog(); // close syslog 
+        return 1;
+    }
     // 6. Accepting the connection 
     int clientfd = 0;
     bool isClientConnected = false;
@@ -170,13 +181,26 @@ int main (int argc, char* argv[])
     clientAddrLen = sizeof clientAddr;
     char ipstr[INET6_ADDRSTRLEN];
     int port;
+    // Mutex for the file accessing
+    pthread_mutex_t mutex;
+    if (pthread_mutex_init(&mutex, NULL) != 0) {
+        ERROR_LOG("Cannot Create Mutex");
+        close(sockfd);
+        closelog(); // close syslog 
+        return 1;
+    } else {
+        DEBUG_LOG("Mutex is inited successfully");
+    }
+    // Create a list (linked-list) for thread information
+    SLIST_HEAD(slisthead, slist_thread_s) head;
+    SLIST_INIT(&head);
     while (!isTerminated) {
         isClientConnected = false;
         isAccepted = false;
-        printf("Waiting to accepting new connection\n");
+        // DEBUG_LOG("Main Thread: Waiting to accepting new connection\n");
         clientfd = accept(sockfd, (struct sockaddr *)&clientAddr, &clientAddrLen);
         isAccepted = true;
-        if (clientfd != 0) {
+        if (clientfd != -1) {
             isClientConnected = true;
             getpeername(clientfd, (struct sockaddr*)&clientAddr, &clientAddrLen);
             // deal with both IPv4 and IPv6:
@@ -189,86 +213,62 @@ int main (int argc, char* argv[])
                 port = ntohs(s->sin6_port);
                 inet_ntop(AF_INET6, &s->sin6_addr, ipstr, sizeof ipstr);
             };
-            printf ("Accepted connection from %d ipaddr: %s\n", clientfd, ipstr);
+            DEBUG_LOG ("Accepted connection from %d ipaddr: %s\n", clientfd, ipstr);
             syslog(LOG_DEBUG, "Accepted connection from %s", ipstr);
-            bool receivedAll = false;
-            char *buffer = malloc(INIT_BUFFER_SIZE);
-            memset(buffer,0,INIT_BUFFER_SIZE);
-            int currentMaxSize = INIT_BUFFER_SIZE;
-            int totalLen = 0;
-            int readBytes= 0;
-            // Recevie the newline from client
-            while (1) {
-                readBytes = recv(clientfd, &buffer[totalLen], INIT_BUFFER_SIZE, 0);
-                if (readBytes >= 0) {
-                    // check last by == \n or not
-                    totalLen+= readBytes;
-                    if (buffer[totalLen-1] == '\n') {
-                        printf("Received full package:\n%s", buffer);
-                        // Store the newline (append) to /var/tmp/aesdsocketdata
-                        if (!fd) {
-                            // reopen to append
-                            fd = fopen(OUT_FILE, "a+");
-                        }
-                        if (fd) {
-                            int ret = fprintf(fd, "%s", buffer);
-                            if (ret) {
-                                printf("Succesfully write %d bytes to file\n", ret );
-                            }
-                            // Re-read the file from begining and 
-                            fclose(fd);
-                            fd = NULL;
-                            fd = fopen(OUT_FILE, "r");
-                            if (fd) {
-                                memset(buffer,0, currentMaxSize); // memset the buffer to reuse in read lin
-                                totalLen = 0;
-                                rewind(fd);
-                                while (!feof(fd)) {
-                                    readBytes = fread(buffer, 1, currentMaxSize, fd);
-                                    printf("read %d bytes from %s and sending to client\n", readBytes, OUT_FILE);
-                                    send(clientfd, buffer, readBytes, 0);
-                                }
-                                fclose(fd);
-                                fd = NULL;
-                            }
-                        } else {
-                            perror("fopen");
-                        }
-                        close(clientfd);
-                        break;
-                    }
-                    if (readBytes == 0) {
-                        printf("No more reading from client");
-                        close(clientfd);
-                        break;
-                    }
-                    // copy the current buffer to new buffer if totalLne is reaching currentMaxSize
-                    if ((totalLen + INIT_BUFFER_SIZE) > currentMaxSize)
-                    {
-                        currentMaxSize *= 2;
-                        char* newBuffer = malloc(currentMaxSize); // double current maxSize;
-                        memset(newBuffer, 0, currentMaxSize);
-                        memcpy(newBuffer, buffer, totalLen);
-                        free(buffer);
-                        buffer = newBuffer;
-                    }
+            // start the thread for the new connection 
+            pthread_t thread;
+            struct thread_data *data = malloc(sizeof(struct thread_data));
+            if (!data)
+            {
+                ERROR_LOG("Failed to malloc thread_data \n");
+                return false;
+            }
+            data->pMutex = &mutex;
+            data->isComplete = false;
+            data->pFile = fd;
+            data->clientFd = clientfd;
+            int rc = pthread_create(&thread, NULL, threadfunc, data);
+            data->thread = thread;
+            if (rc != 0) {
+                ERROR_LOG("Failed to create thread for connection from %d ipaddr: %s\n", clientfd, ipstr);
+            } else {
+                // Add the data to thread list
+                slist_thread_t *threaListData = malloc(sizeof(slist_thread_t));
+                threaListData->pThreadData = data;
+                DEBUG_LOG("Insert new thread %p data to list", data->thread);
+                SLIST_INSERT_HEAD(&head, threaListData, entries);
+            }
+        } else {
+            DEBUG_LOG("No client connected\n");
+            usleep(100000);
+        }
+        slist_thread_t *threadListData;
+        slist_thread_t *tempThreadListData;
+        SLIST_FOREACH_SAFE(threadListData, &head, entries, tempThreadListData) {
+            if (threadListData->pThreadData->isComplete) {
+                void * thread_rtn = NULL;
+                DEBUG_LOG("Thread %p of client %d is completed", threadListData->pThreadData->thread, threadListData->pThreadData->clientFd);
+                int tryjoin_rtn =  pthread_join(threadListData->pThreadData->thread, &thread_rtn);
+                // int tryjoin_rtn = pthread_tryjoin_np(*threaListData->pThreadData->pThread,&thread_rtn);
+                // if( tryjoin_rtn != 0 ) {
+                //     tryjoin_rtn = pthread_join(*(threaListData->pThreadData->pThread), &thread_rtn);
+                // } 
+                if (tryjoin_rtn != 0) {
+                    ERROR_LOG("Cannot join the thread %p of client %d", threadListData->pThreadData->thread, threadListData->pThreadData->clientFd);
+                } else {
+                    DEBUG_LOG("Joined thread %p of client %d successfully", threadListData->pThreadData->thread, threadListData->pThreadData->clientFd);
+                    // close client
+                    close(threadListData->pThreadData->clientFd);
+                    SLIST_REMOVE(&head,threadListData, slist_thread_s, entries);
+                    // free pthread data
+                    free(threadListData->pThreadData);
+                    free(threadListData);
                 }
             }
-            // Return the full content of the file /var/tmp/aesdsocketdata back to client 
-            free(buffer);
-        } else {
-            printf("No client connected\n");
         }
-        // 7. Close the socket 
-        if (clientfd) {
-            printf("Closed connection from %s\n", ipstr);
-            syslog(LOG_DEBUG, "Closed connection from %s", ipstr);
-            close(clientfd);
-            isClientConnected = false;
-        } 
+        // fflush(stdin);
     }
-    if (clientfd && isClientConnected) close(clientfd); 
-    printf("close server socket");
+    DEBUG_LOG("close server socket");
     close(sockfd);
     closelog(); // close syslog 
     return 0;
