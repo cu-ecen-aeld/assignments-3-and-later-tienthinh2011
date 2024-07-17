@@ -2,9 +2,9 @@ SRC := aesdsocket.c aesdhelper.c
 TARGET = aesdsocket
 OBJS := $(SRC:.c=.o)
 CC := $(CROSS_COMPILE)gcc
-# CFLAGS += -g -O0
+CFLAGS += -g -O0 #for debugging 
 CFLAGS += -pthread
-# LDFLAGS += -lpthread
+LDFLAGS += -lrt
 all: $(TARGET)
 
 $(TARGET) : $(OBJS)

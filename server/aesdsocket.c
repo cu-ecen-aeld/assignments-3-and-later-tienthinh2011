@@ -3,7 +3,9 @@
 #include <string.h>
 #include <syslog.h>
 #include <stdbool.h>
-
+// timer
+#include <time.h>
+#include <errno.h>
 // for socket
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -38,6 +40,44 @@ static void sigHandler(int signal_number) {
     }
 }
 
+static void timer_thread ( union sigval sigval )
+{
+    char* time_fmt = "%a, %d %b %Y %T %z";
+    struct timespec ts;
+    int rc = clock_gettime(CLOCK_REALTIME,&ts);
+    if( rc != 0 ) {
+        ERROR_LOG("Error %d (%s) getting clock %d (%s) time",
+                errno,strerror(errno),CLOCK_REALTIME,"CLOCK_REALTIME");
+        return;
+    } else {
+        DEBUG_LOG("Clock realtime %ld.%09ld",ts.tv_sec,ts.tv_nsec);
+    }
+    char timeStr[32];
+    char buffer[128];
+    memset(timeStr, 0, sizeof(timeStr));
+    struct tm tm;
+    if ( gmtime_r(&ts.tv_sec,&tm) == NULL ) {
+        ERROR_LOG("Error calling gmtime_r with time %ld",ts.tv_sec);
+    } else  {
+        if (strftime(timeStr, sizeof(timeStr), time_fmt, &tm) == 0) {
+            fprintf(stderr, "strftime returned 0");
+            exit(EXIT_FAILURE);
+        }
+    }
+    struct thread_data *td = (struct thread_data*) sigval.sival_ptr;
+    if ( pthread_mutex_lock(td->pMutex) != 0 ) {
+        ERROR_LOG("Error %d (%s) locking thread data!\n",errno,strerror(errno));
+    } else {        
+        fseek(fd, 0, SEEK_END);// move pointer to the end of the file
+        sprintf(buffer, "timestamp:%s\n", timeStr);
+        DEBUG_LOG("Write to file: %s", buffer);
+        int ret = fwrite(buffer, 1, strlen(buffer), fd);
+        if ( pthread_mutex_unlock(td->pMutex) != 0 ) {
+            ERROR_LOG("Error %d (%s) unlocking thread data!\n",errno,strerror(errno));
+        }
+    }
+}
+
 int main (int argc, char* argv[])
 {
     bool isDaemon = false;
@@ -58,6 +98,10 @@ int main (int argc, char* argv[])
         perror("sigaction");
         exit(1);
     }
+    // if (sigaction(SIGALRM, &new_action, NULL) != 0) {
+    //     perror("sigaction");
+    //     exit(1);
+    // }
 
 
     if (argc > 1) {
@@ -173,14 +217,6 @@ int main (int argc, char* argv[])
         closelog(); // close syslog 
         return 1;
     }
-    // 6. Accepting the connection 
-    int clientfd = 0;
-    bool isClientConnected = false;
-    struct sockaddr_storage clientAddr;
-    socklen_t clientAddrLen;
-    clientAddrLen = sizeof clientAddr;
-    char ipstr[INET6_ADDRSTRLEN];
-    int port;
     // Mutex for the file accessing
     pthread_mutex_t mutex;
     if (pthread_mutex_init(&mutex, NULL) != 0) {
@@ -191,6 +227,45 @@ int main (int argc, char* argv[])
     } else {
         DEBUG_LOG("Mutex is inited successfully");
     }
+    // Create timer and thread for writing timestamp
+
+    struct thread_data td;
+    memset(&td, 0, sizeof(struct thread_data));
+    td.pMutex = &mutex;
+    td.pFile = fd;
+
+    struct sigevent sev;
+    struct itimerspec its;
+    timer_t timer_id;
+    int clock_id = CLOCK_MONOTONIC;
+    memset(&sev, 0, sizeof(struct sigevent));
+    sev.sigev_notify = SIGEV_THREAD;
+    sev.sigev_value.sival_ptr = &td;
+    sev.sigev_notify_function = timer_thread;
+    if (timer_create(clock_id, &sev, &timer_id) == -1) {
+        ERROR_LOG("Error %d (%s) creating timer!\n",errno,strerror(errno));
+    } else {
+        DEBUG_LOG("Successfully setup timer, wait for timer thread to run");
+    }
+    
+    // Start the timer to expire after 1 second and then every 1 second
+    its.it_value.tv_sec = 10;
+    its.it_value.tv_nsec = 0;
+    its.it_interval.tv_sec = 10;
+    its.it_interval.tv_nsec = 0;
+    if (timer_settime(timer_id, 0, &its, NULL) == -1) {
+        perror("timer_settime");
+        exit(EXIT_FAILURE);
+    }
+    
+    // 6. Accepting the connection 
+    int clientfd = 0;
+    bool isClientConnected = false;
+    struct sockaddr_storage clientAddr;
+    socklen_t clientAddrLen;
+    clientAddrLen = sizeof clientAddr;
+    char ipstr[INET6_ADDRSTRLEN];
+    int port;
     // Create a list (linked-list) for thread information
     SLIST_HEAD(slisthead, slist_thread_s) head;
     SLIST_INIT(&head);
@@ -199,8 +274,8 @@ int main (int argc, char* argv[])
         isAccepted = false;
         // DEBUG_LOG("Main Thread: Waiting to accepting new connection\n");
         clientfd = accept(sockfd, (struct sockaddr *)&clientAddr, &clientAddrLen);
-        isAccepted = true;
         if (clientfd != -1) {
+            isAccepted = true;
             isClientConnected = true;
             getpeername(clientfd, (struct sockaddr*)&clientAddr, &clientAddrLen);
             // deal with both IPv4 and IPv6:
@@ -239,7 +314,8 @@ int main (int argc, char* argv[])
                 SLIST_INSERT_HEAD(&head, threaListData, entries);
             }
         } else {
-            DEBUG_LOG("No client connected\n");
+            // DEBUG_LOG("No client connected\n");
+            // printf(".");
             usleep(100000);
         }
         slist_thread_t *threadListData;
@@ -270,6 +346,7 @@ int main (int argc, char* argv[])
     }
     DEBUG_LOG("close server socket");
     close(sockfd);
+    if (fd) fclose(fd);
     closelog(); // close syslog 
     return 0;
 }
