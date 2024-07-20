@@ -1,7 +1,7 @@
 SRC := aesdsocket.c aesdhelper.c
 TARGET = aesdsocket
 OBJS := $(SRC:.c=.o)
-CC ?= $(CROSS_COMPILE)gcc
+#CC ?= gcc
 #CFLAGS ?= -g -O0 #for debugging
 CFLAGS ?= -g -Wall -Werror #for debugging
 LDFLAGS ?= -lrt -lpthread
