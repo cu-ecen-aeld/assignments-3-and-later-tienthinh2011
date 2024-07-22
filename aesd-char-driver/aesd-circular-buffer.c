@@ -8,10 +8,20 @@
  *
  */
 
+#define DEBUGG true
+
 #ifdef __KERNEL__
 #include <linux/string.h>
 #else
 #include <string.h>
+#ifdef DEBUGG 
+#include <stdio.h>
+#define DEBUG_LOG(msg, ...) printf("circular-buffer DEBUG: " msg "\n", ##__VA_ARGS__)
+#define ERROR_LOG(msg, ...) printf("circular-buffer ERROR: " msg "\n", ##__VA_ARGS__)
+#else 
+#define DEBUG_LOG(msg, ...)
+#define ERROR_LOG(msg, ...)
+#endif
 #endif
 
 #include "aesd-circular-buffer.h"
@@ -32,7 +42,24 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     /**
     * TODO: implement per description
     */
-    return NULL;
+    size_t offset = char_offset%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    DEBUG_LOG("Calculated offset = %lu", offset);
+    if (buffer->full) {
+        *entry_offset_byte_rtn = offset;
+        DEBUG_LOG("Full");
+    } else {
+        // empty case
+        if (buffer->in_offs == 0 || offset > buffer->in_offs) 
+        {
+            DEBUG_LOG("Empty");
+            *entry_offset_byte_rtn = 0;
+            return NULL;
+        } else {
+            DEBUG_LOG("Not empty, not full");
+            *entry_offset_byte_rtn = offset;
+        }
+    }
+    return (&buffer->entry[offset]);
 }
 
 /**
@@ -47,6 +74,22 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     /**
     * TODO: implement per description
     */
+    buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
+    buffer->entry[buffer->in_offs].size = add_entry->size;
+    DEBUG_LOG("Add new entry at in_offs: %d, %s; out_offs: %d", buffer->in_offs, buffer->entry[buffer->in_offs].buffptr, buffer->out_offs);
+    buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    DEBUG_LOG("New in_offs: %d", buffer->in_offs);
+    if (buffer->full) {
+        // buffer->entry[buffer->in_offs] = add_entry;
+        // buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+        buffer->out_offs = buffer->in_offs;//(buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+        DEBUG_LOG("Buffer is full");
+    } else {
+        if (buffer->in_offs == buffer->out_offs) {
+            buffer->full = true;
+            DEBUG_LOG("Buffer started being full");
+        }
+    }
 }
 
 /**
