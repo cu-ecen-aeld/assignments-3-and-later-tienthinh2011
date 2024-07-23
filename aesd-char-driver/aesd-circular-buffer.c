@@ -42,24 +42,56 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     /**
     * TODO: implement per description
     */
-    size_t offset = char_offset%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
-    DEBUG_LOG("Calculated offset = %lu", offset);
-    if (buffer->full) {
-        *entry_offset_byte_rtn = offset;
-        DEBUG_LOG("Full");
-    } else {
-        // empty case
-        if (buffer->in_offs == 0 || offset > buffer->in_offs) 
-        {
-            DEBUG_LOG("Empty");
-            *entry_offset_byte_rtn = 0;
-            return NULL;
-        } else {
-            DEBUG_LOG("Not empty, not full");
-            *entry_offset_byte_rtn = offset;
-        }
+    // size_t offset = char_offset%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    // DEBUG_LOG("Calculated offset = %lu", offset);
+    // if (buffer->full) {
+    //     *entry_offset_byte_rtn = offset;
+    //     DEBUG_LOG("Full");
+    // } else {
+    //     // empty case
+    //     if (buffer->in_offs == 0 || offset > buffer->in_offs) 
+    //     {
+    //         DEBUG_LOG("Empty");
+    //         *entry_offset_byte_rtn = 0;
+    //         return NULL;
+    //     } else {
+    //         DEBUG_LOG("Not empty, not full");
+    //         *entry_offset_byte_rtn = offset;
+    //     }
+    // }
+    // return (buffer->entry);
+    if (!buffer->full && buffer->in_offs == 0) {
+        DEBUG_LOG("Empty");
+        *entry_offset_byte_rtn = 0;
+        return NULL;
     }
-    return (&buffer->entry[offset]);
+    size_t index = buffer->out_offs;
+    size_t maxPos = 0;
+    struct aesd_buffer_entry*  entry = &buffer->entry[index];
+    do {
+        maxPos += entry->size;
+        if (maxPos > char_offset) {
+            // find the offset and return
+            *entry_offset_byte_rtn = char_offset - (maxPos - entry->size);
+            return entry;
+        }
+        index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+        entry = &buffer->entry[index];
+    } while (index != buffer->in_offs);
+
+    // AESD_CIRCULAR_BUFFER_FOREACH(entry,buffer,index) {
+    //     maxPos += entry->size;
+    //     if (maxPos > char_offset) {
+    //         // find the offset and return
+    //         *entry_offset_byte_rtn = char_offset - (maxPos-entry->size);
+    //         return entry;
+    //     }
+    // }
+    
+    DEBUG_LOG("Not available");
+    *entry_offset_byte_rtn = 0;
+    return NULL;
+    
 }
 
 /**
