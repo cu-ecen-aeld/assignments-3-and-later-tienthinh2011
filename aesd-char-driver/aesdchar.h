@@ -10,18 +10,32 @@
 
 #define AESD_DEBUG 1  //Remove comment on this line to enable debug
 
-#undef PDEBUG             /* undef it, just in case */
-#ifdef AESD_DEBUG
-#  ifdef __KERNEL__
+#ifdef __KERNEL__
+    #include <linux/string.h>
+    #ifdef AESD_DEBUG 
      /* This one if debugging is on, and kernel space */
-#    define PDEBUG(fmt, args...) printk( KERN_DEBUG "aesdchar: " fmt, ## args)
-#  else
-     /* This one for user space */
-#    define PDEBUG(fmt, args...) fprintf(stderr, fmt, ## args)
-#  endif
-#else
-#  define PDEBUG(fmt, args...) /* not debugging: nothing */
-#endif
+        #define DEBUG_LOG(fmt, args...) printk( KERN_DEBUG "aesdchar: " fmt, ## args)
+        #define ERROR_LOG(fmt, args...) printk( KERN_DEBUG "aesdchar: " fmt, ## args)
+        #define PDEBUG DEBUG_LOG
+        #define PERROR ERROR_LOG
+    #else
+        #define DEBUG_LOG(msg, ...)
+        #define ERROR_LOG(msg, ...)
+    #endif // DEBUGG
+#else // user space #def
+    #include <string.h>
+    #ifdef AESD_DEBUG 
+        #include <stdio.h>
+        #define DEBUG_LOG(msg, ...) printf("circular-buffer DEBUG: " msg "\n", ##__VA_ARGS__)
+        #define ERROR_LOG(msg, ...) printf("circular-buffer ERROR: " msg "\n", ##__VA_ARGS__)
+    #else 
+        #define DEBUG_LOG(msg, ...)
+        #define ERROR_LOG(msg, ...)
+    #endif
+#endif // __KERNEL__
+// maintain courser's provided PDEBUG 
+#define PDEBUG DEBUG_LOG
+#define PERROR ERROR_LOG
 
 struct aesd_dev
 {

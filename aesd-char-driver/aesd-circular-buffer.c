@@ -11,18 +11,26 @@
 #define DEBUGG true
 
 #ifdef __KERNEL__
-#include <linux/string.h>
-#else
-#include <string.h>
-#ifdef DEBUGG 
-#include <stdio.h>
-#define DEBUG_LOG(msg, ...) printf("circular-buffer DEBUG: " msg "\n", ##__VA_ARGS__)
-#define ERROR_LOG(msg, ...) printf("circular-buffer ERROR: " msg "\n", ##__VA_ARGS__)
-#else 
-#define DEBUG_LOG(msg, ...)
-#define ERROR_LOG(msg, ...)
-#endif
-#endif
+    #include <linux/string.h>
+    #ifdef DEBUGG 
+     /* This one if debugging is on, and kernel space */
+        #define DEBUG_LOG(fmt, args...) printk( KERN_DEBUG "aesdchar: " fmt, ## args)
+        #define ERROR_LOG(fmt, args...) printk( KERN_DEBUG "aesdchar: " fmt, ## args)
+    #else
+        #define DEBUG_LOG(msg, ...)
+        #define ERROR_LOG(msg, ...)
+    #endif // DEBUGG
+#else // user space #def
+    #include <string.h>
+    #ifdef DEBUGG 
+        #include <stdio.h>
+        #define DEBUG_LOG(msg, ...) printf("circular-buffer DEBUG: " msg "\n", ##__VA_ARGS__)
+        #define ERROR_LOG(msg, ...) printf("circular-buffer ERROR: " msg "\n", ##__VA_ARGS__)
+    #else 
+        #define DEBUG_LOG(msg, ...)
+        #define ERROR_LOG(msg, ...)
+    #endif
+#endif // __KERNEL__
 
 #include "aesd-circular-buffer.h"
 
@@ -78,15 +86,6 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
         index = (index + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
         entry = &buffer->entry[index];
     } while (index != buffer->in_offs);
-
-    // AESD_CIRCULAR_BUFFER_FOREACH(entry,buffer,index) {
-    //     maxPos += entry->size;
-    //     if (maxPos > char_offset) {
-    //         // find the offset and return
-    //         *entry_offset_byte_rtn = char_offset - (maxPos-entry->size);
-    //         return entry;
-    //     }
-    // }
     
     DEBUG_LOG("Not available");
     *entry_offset_byte_rtn = 0;
