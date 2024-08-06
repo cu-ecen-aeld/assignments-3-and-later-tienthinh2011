@@ -32,7 +32,11 @@ int aesd_open(struct inode *inode, struct file *filp)
     /**
      * TODO: handle open
      */
-    return 0;
+    struct aesd_dev *dev; /* device information */
+
+	dev = container_of(inode->i_cdev, struct aesd_dev, cdev);
+	filp->private_data = dev; /* for other methods */
+	return 0;          /* success */
 }
 
 int aesd_release(struct inode *inode, struct file *filp)

@@ -12,6 +12,7 @@
 
 #ifdef __KERNEL__
     #include <linux/string.h>
+    #include <linux/kernel.h>	/* printk() */
     #ifdef DEBUGG 
      /* This one if debugging is on, and kernel space */
         #define DEBUG_LOG(fmt, args...) printk( KERN_DEBUG "aesdchar: " fmt, ## args)
