@@ -12,4 +12,5 @@ sudo echo 'write8' > /dev/aesdchar
 sudo echo 'write9' > /dev/aesdchar
 sudo echo 'write10' > /dev/aesdchar
 sudo echo 'write11' > /dev/aesdchar
+sudo echo 'write12' > /dev/aesdchar
 cat /dev/aesdchar 

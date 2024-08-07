@@ -18,6 +18,7 @@
 #include <linux/cdev.h>
 #include <linux/slab.h> /* kmalloc() */
 #include <linux/fs.h> // file_operations
+#include <linux/mutex.h>
 #include "aesdchar.h"
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
@@ -61,6 +62,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
      */
     
     struct aesd_dev *dev = (struct aesd_dev *)filp->private_data; /* for other methods */
+    mutex_lock_interruptible(&dev->lock);
     uint8_t index;
     size_t totalBytes = 0;
     size_t copiedBytes;
@@ -96,6 +98,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     retval = totalBytes;
 
 read_done: 
+    mutex_unlock(&dev->lock);
     return retval;
 }
 
@@ -117,6 +120,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         return count - numFailedBytes;
     }
     struct aesd_dev *dev = (struct aesd_dev *)filp->private_data; /* for other methods */
+
+    mutex_lock_interruptible(&dev->lock);
     struct aesd_buffer_entry entry;
     // added when changing return type of aesd_circular_buffer_add_entry to const char*
     const char* rtnptr;
@@ -127,6 +132,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         PDEBUG("Free kbuffer: %s", rtnptr);
         kfree(rtnptr);
     }
+    mutex_unlock(&dev->lock);
     return count;
 }
 struct file_operations aesd_fops = {
@@ -169,7 +175,7 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
-
+    mutex_init(&aesd_device.lock);
     result = aesd_setup_cdev(&aesd_device);
 
     if( result ) {
