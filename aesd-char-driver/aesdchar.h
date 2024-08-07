@@ -33,6 +33,7 @@
         #define ERROR_LOG(msg, ...)
     #endif
 #endif // __KERNEL__
+#include "aesd-circular-buffer.h"
 // maintain courser's provided PDEBUG 
 #define PDEBUG DEBUG_LOG
 #define PERROR ERROR_LOG
@@ -42,6 +43,7 @@ struct aesd_dev
     /**
      * TODO: Add structure(s) and locks needed to complete assignment requirements
      */
+    struct aesd_circular_buffer buffer;
     struct cdev cdev;     /* Char device structure      */
 };
 

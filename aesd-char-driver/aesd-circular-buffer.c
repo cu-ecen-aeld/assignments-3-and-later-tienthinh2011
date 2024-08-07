@@ -114,7 +114,7 @@ const char* aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, 
     }
     buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
     buffer->entry[buffer->in_offs].size = add_entry->size;
-    DEBUG_LOG("Add new entry at in_offs: %d, %s; out_offs: %d", buffer->in_offs, buffer->entry[buffer->in_offs].buffptr, buffer->out_offs);
+    DEBUG_LOG("Add new entry at in_offs: %d; out_offs: %d, %s", buffer->in_offs, buffer->out_offs, buffer->entry[buffer->in_offs].buffptr);
     buffer->in_offs = (buffer->in_offs + 1) % AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
     DEBUG_LOG("New in_offs: %d", buffer->in_offs);
     if (buffer->full) {
