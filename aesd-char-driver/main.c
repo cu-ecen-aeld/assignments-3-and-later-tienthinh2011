@@ -76,7 +76,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         goto read_done;
     }
     do {
-        copiedBytes = remainingBytes >= entry->size ? entry->size : remainingBytes;
+        copiedBytes = remainingBytes >= (entry->size - offset_rtn)  ? (entry->size - offset_rtn): remainingBytes;
         remainingBytes -= copiedBytes;
         failedBytes = copy_to_user(&buf[totalBytes], entry->buffptr, copiedBytes);
         if (failedBytes != 0) {
@@ -85,9 +85,12 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
         }
         totalBytes += copiedBytes;
         *f_pos+= copiedBytes;
-        PDEBUG("read index: %d, totalBytes: %d", index, totalBytes);
-        entry += 1;
-    } while (entry != &dev->buffer.entry[dev->buffer.in_offs]);
+        PDEBUG("totalBytes: %d", index, totalBytes);
+        entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer,
+                                                    *f_pos,
+                                                    &offset_rtn);
+    // } while (entry != &dev->buffer.entry[dev->buffer.in_offs]);
+    } while (entry != NULL);
 
     PDEBUG("read %d bytes", totalBytes);
     retval = totalBytes;
