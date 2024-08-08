@@ -241,7 +241,7 @@ int main (int argc, char* argv[])
     struct thread_data td;
     memset(&td, 0, sizeof(struct thread_data));
     td.pMutex = &mutex;
-    td.pFile = fd;
+    // td.pFile = fd;
     struct sigevent sev;
     struct itimerspec its;
     timer_t timer_id;
