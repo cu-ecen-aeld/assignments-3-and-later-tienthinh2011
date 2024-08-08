@@ -22,7 +22,7 @@ void *threadfunc(void *thread_param)
 {
     struct thread_data *data = (struct thread_data *)thread_param;
     int clientFd = data->clientFd;
-    FILE* fd = data->pFile; // asumming this file is already open with read/write permission 
+    // FILE* fd = data->pFile; // asumming this file is already open with read/write permission 
     pthread_mutex_t* pMutex = data->pMutex;
     DEBUG_LOG("threadfunc pThread %p for client %d started", data->thread, data->clientFd);
 
@@ -45,22 +45,38 @@ void *threadfunc(void *thread_param)
             {
                 DEBUG_LOG("Received full package:\n%s", buffer);
                 pthread_mutex_lock(pMutex);
-                fseek(fd, 0, SEEK_END);// move pointer to the end of the file
-                int ret = fwrite(buffer, 1, totalLen, fd);
-                // int ret = fprintf(fd, "%s", buffer);
-                if (ret)
-                {
-                    DEBUG_LOG("Succesfully write %d bytes to file", ret);
+                FILE* fd = fopen(data->fileName, "w+"); 
+                if (fd) {
+                    #ifndef USE_AESD_CHAR_DEVICE
+                    fseek(fd, 0, SEEK_END);// move pointer to the end of the file
+                    #endif
+                    int ret = fwrite(buffer, 1, totalLen, fd);
+                    // int ret = fprintf(fd, "%s", buffer);
+                    if (ret)
+                    {
+                        DEBUG_LOG("Succesfully write %d bytes to file", ret);
+                    }
+                    fclose(fd);
+                } else {
+                    ERROR_LOG("Failed to open to write file %s: ", data->fileName);
                 }
-                fseek(fd, 0, SEEK_SET);
-                memset(buffer, 0, currentMaxSize); // memset the buffer to reuse in read lin
-                totalLen = 0;
-                // rewind(fd); // move pointer to the beginning of the file
-                while (!feof(fd))
-                {
-                    readBytes = fread(buffer, 1, currentMaxSize, fd);
-                    DEBUG_LOG("read %d bytes from file and sending to client", readBytes);
-                    send(clientFd, buffer, readBytes, 0);
+                fd = fopen(data->fileName, "r"); 
+                if (fd) {
+                    #ifndef USE_AESD_CHAR_DEVICE
+                        fseek(fd, 0, SEEK_SET); 
+                    #endif
+                    memset(buffer, 0, currentMaxSize); // memset the buffer to reuse in read lin
+                    totalLen = 0;
+                    // rewind(fd); // move pointer to the beginning of the file
+                    while (!feof(fd))
+                    {
+                        readBytes = fread(buffer, 1, currentMaxSize, fd);
+                        DEBUG_LOG("read %d bytes from file and sending to client", readBytes);
+                        send(clientFd, buffer, readBytes, 0);
+                    }
+                    fclose(fd);
+                } else {
+                    ERROR_LOG("Failed to open to read file %s: ", data->fileName);
                 }
                 DEBUG_LOG("unlock the pMutex");
                 pthread_mutex_unlock(pMutex);
@@ -100,26 +116,26 @@ void *threadfunc(void *thread_param)
     // } 
 }
 
-bool start_thread(pthread_t *thread, pthread_mutex_t *mutex, FILE *file, int clientFd)
-{
-    struct thread_data *data = malloc(sizeof(struct thread_data));
-    if (!data)
-    {
-        ERROR_LOG("Failed to malloc thread_data \n");
-        return false;
-    }
-    data->pMutex = mutex;
-    data->isComplete = false;
-    data->pFile = file;
-    data->clientFd = clientFd;
-    int rc = pthread_create(thread, NULL, threadfunc, data);
-    if (rc != 0)
-    {
-        ERROR_LOG("pthread_create failed with error %d creating thread %p\n", rc, thread);
-        return false;
-    }
-    else
-    {
-        return true;
-    }
-}
+// bool start_thread(pthread_t *thread, pthread_mutex_t *mutex, FILE *file, int clientFd)
+// {
+//     struct thread_data *data = malloc(sizeof(struct thread_data));
+//     if (!data)
+//     {
+//         ERROR_LOG("Failed to malloc thread_data \n");
+//         return false;
+//     }
+//     data->pMutex = mutex;
+//     data->isComplete = false;
+//     data->fileName = 
+//     data->clientFd = clientFd;
+//     int rc = pthread_create(thread, NULL, threadfunc, data);
+//     if (rc != 0)
+//     {
+//         ERROR_LOG("pthread_create failed with error %d creating thread %p\n", rc, thread);
+//         return false;
+//     }
+//     else
+//     {
+//         return true;
+//     }
+// }

@@ -24,17 +24,21 @@
 #define ERROR_LOG(msg,...) printf("aesdsocket ERROR: " msg "\n" , ##__VA_ARGS__)
 
 #define AESD_PORT "9000"
+#ifdef USE_AESD_CHAR_DEVICE
+#define OUT_FILE "/dev/aesdchar"
+#else
 #define OUT_FILE "/var/tmp/aesdsocketdata"
+#endif
 
 static bool isTerminated = false;
 static bool isAccepted = false;
-FILE * fd = NULL;
+// FILE * fd = NULL;
 static void sigHandler(int signal_number) {
     if (signal_number == SIGINT || signal_number == SIGTERM) {
         isTerminated = true;
         if (!isAccepted) {
             closelog();
-            if (fd) fclose(fd);
+            // if (fd) fclose(fd);
             exit(-1);
         }
     }
@@ -67,13 +71,17 @@ static void timer_thread ( union sigval sigval )
     struct thread_data *td = (struct thread_data*) sigval.sival_ptr;
     if ( pthread_mutex_lock(td->pMutex) != 0 ) {
         ERROR_LOG("Error %d (%s) locking thread data!\n",errno,strerror(errno));
-    } else {        
-        fseek(fd, 0, SEEK_END);// move pointer to the end of the file
-        sprintf(buffer, "timestamp:%s\n", timeStr);
-        DEBUG_LOG("Write to file: %s", buffer);
-        int ret = fwrite(buffer, 1, strlen(buffer), fd);
-        if ( pthread_mutex_unlock(td->pMutex) != 0 ) {
-            ERROR_LOG("Error %d (%s) unlocking thread data!\n",errno,strerror(errno));
+    } else {
+        FILE* fd = fopen(OUT_FILE, "w+"); 
+        if (fd) {
+            fseek(fd, 0, SEEK_END);// move pointer to the end of the file
+            sprintf(buffer, "timestamp:%s\n", timeStr);
+            DEBUG_LOG("Write to file: %s", buffer);
+            int ret = fwrite(buffer, 1, strlen(buffer), fd);
+            if ( pthread_mutex_unlock(td->pMutex) != 0 ) {
+                ERROR_LOG("Error %d (%s) unlocking thread data!\n",errno,strerror(errno));
+            }
+            fclose(fd);
         }
     }
 }
@@ -98,10 +106,10 @@ int main (int argc, char* argv[])
         perror("sigaction");
         exit(1);
     }
-    // if (sigaction(SIGALRM, &new_action, NULL) != 0) {
-    //     perror("sigaction");
-    //     exit(1);
-    // }
+
+    #ifdef USE_AESD_CHAR_DEVICE
+    DEBUG_LOG("aesdsocket using USE_AESD_CHAR_DEVICE");
+    #endif
 
 
     if (argc > 1) {
@@ -210,13 +218,13 @@ int main (int argc, char* argv[])
         exit(-1);
     } 
     DEBUG_LOG("server is now listening to port:%s\n", AESD_PORT);
-    fd = fopen(OUT_FILE, "w+"); // open file to read and write
-    if (!fd) {
-        ERROR_LOG("Cannot open file %s", OUT_FILE);
-        close(sockfd);
-        closelog(); // close syslog 
-        return 1;
-    }
+    // fd = fopen(OUT_FILE, "w+"); // open file to read and write
+    // if (!fd) {
+    //     ERROR_LOG("Cannot open file %s", OUT_FILE);
+    //     close(sockfd);
+    //     closelog(); // close syslog 
+    //     return 1;
+    // }
     // Mutex for the file accessing
     pthread_mutex_t mutex;
     if (pthread_mutex_init(&mutex, NULL) != 0) {
@@ -227,13 +235,13 @@ int main (int argc, char* argv[])
     } else {
         DEBUG_LOG("Mutex is inited successfully");
     }
-    // Create timer and thread for writing timestamp
 
+#ifndef USE_AESD_CHAR_DEVICE
+    // Create timer and thread for writing timestamp
     struct thread_data td;
     memset(&td, 0, sizeof(struct thread_data));
     td.pMutex = &mutex;
     td.pFile = fd;
-
     struct sigevent sev;
     struct itimerspec its;
     timer_t timer_id;
@@ -246,8 +254,7 @@ int main (int argc, char* argv[])
         ERROR_LOG("Error %d (%s) creating timer!\n",errno,strerror(errno));
     } else {
         DEBUG_LOG("Successfully setup timer, wait for timer thread to run");
-    }
-    
+    }    
     // Start the timer to expire after 1 second and then every 1 second
     its.it_value.tv_sec = 10;
     its.it_value.tv_nsec = 0;
@@ -256,7 +263,8 @@ int main (int argc, char* argv[])
     if (timer_settime(timer_id, 0, &its, NULL) == -1) {
         perror("timer_settime");
         exit(EXIT_FAILURE);
-    }
+    } // end of timer 
+#endif
     
     // 6. Accepting the connection 
     int clientfd = 0;
@@ -300,7 +308,7 @@ int main (int argc, char* argv[])
             }
             data->pMutex = &mutex;
             data->isComplete = false;
-            data->pFile = fd;
+            data->fileName = OUT_FILE;
             data->clientFd = clientfd;
             int rc = pthread_create(&thread, NULL, threadfunc, data);
             data->thread = thread;
@@ -346,7 +354,7 @@ int main (int argc, char* argv[])
     }
     DEBUG_LOG("close server socket");
     close(sockfd);
-    if (fd) fclose(fd);
+    // if (fd) fclose(fd);
     closelog(); // close syslog 
     return 0;
 }

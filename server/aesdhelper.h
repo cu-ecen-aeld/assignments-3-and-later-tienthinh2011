@@ -29,7 +29,7 @@ struct thread_data {
     /* data */
     pthread_t thread; // pointer to thread itself
     pthread_mutex_t *pMutex;
-    FILE* pFile;
+    const char* fileName;
     int clientFd;
     bool isComplete;
 };
