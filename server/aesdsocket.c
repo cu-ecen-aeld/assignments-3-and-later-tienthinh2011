@@ -184,11 +184,12 @@ int main (int argc, char* argv[])
     if (sockfd == 0) {
         fprintf(stderr, "could not create socket\n");
         exit (-1);
-    } 
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
-        sizeof(int)) == -1) {
+    } else {
+        DEBUG_LOG("sockfd = %d", sockfd);
+    }
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
         perror("setsockopt");
-        exit(1);
+        // exit(1);
     }
     // 3. Bind the socket 
     if ((status = bind(sockfd, servinfo->ai_addr, servinfo->ai_addrlen)) != 0) {
