@@ -120,17 +120,53 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
         return count - numFailedBytes;
     }
     struct aesd_dev *dev = (struct aesd_dev *)filp->private_data; /* for other methods */
-
     mutex_lock_interruptible(&dev->lock);
-    struct aesd_buffer_entry entry;
-    // added when changing return type of aesd_circular_buffer_add_entry to const char*
-    const char* rtnptr;
-    entry.buffptr = kbuf;
-    entry.size = count;
-    rtnptr = aesd_circular_buffer_add_entry(&dev->buffer,&entry);
-    if (rtnptr != NULL) {
-        PDEBUG("Free kbuffer: %s", rtnptr);
-        kfree(rtnptr);
+    // check if kbuf contain '\n' character to terminate the written command
+    bool isTerminated = false;
+    size_t len = 0;
+    for (len = 0; len < count; len++) {
+        if (kbuf[len] == '\n') {
+            isTerminated = true;
+            len++;
+            break;
+        }
+    }
+    char* newBuff;
+    size_t newLen = dev->wsize - dev->wpos + len;
+    if (!isTerminated) newLen += len;
+    // create a new buff if previous buffer is not enought to append 
+    if (newLen > dev->wsize || isTerminated) {
+        newBuff = kmalloc(newLen, GFP_KERNEL);
+        memcpy(newBuff, dev->wbuf, dev->wpos);
+        kfree(dev->wbuf);
+        dev->wbuf = newBuff;
+        dev->wsize = newLen;
+    } else {
+        newBuff  = dev->wbuf;
+    }
+    // append the most recent received characters to the buffer
+    memcpy(&newBuff[dev->wpos], kbuf, len);
+    kfree(kbuf);
+    dev->wpos += len;
+    if (isTerminated) {
+        struct aesd_buffer_entry entry;
+        // added when changing return type of aesd_circular_buffer_add_entry to const char*
+        const char* rtnptr;
+        entry.buffptr = kmalloc(dev->wpos,GFP_KERNEL);
+        memcpy(entry.buffptr, dev->wbuf, dev->wpos);
+        entry.size = dev->wpos;
+        kfree(dev->wbuf);
+        // reduced to original size;
+        dev->wsize = INIT_WBUF_SIZE;
+        dev->wbuf = kmalloc(INIT_WBUF_SIZE, GFP_KERNEL); 
+        dev->wpos = 0;
+        rtnptr = aesd_circular_buffer_add_entry(&dev->buffer,&entry);
+        if (rtnptr != NULL) {
+            PDEBUG("Free kbuffer: %s", rtnptr);
+            kfree(rtnptr);
+        }
+    } else {
+        PDEBUG("still waiting for LF character");
     }
     mutex_unlock(&dev->lock);
     return count;
@@ -161,6 +197,7 @@ static int aesd_setup_cdev(struct aesd_dev *dev)
 
 int aesd_init_module(void)
 {
+    PDEBUG("=============aesd_init_module============");
     dev_t dev = 0;
     int result;
     result = alloc_chrdev_region(&dev, aesd_minor, 1,
@@ -172,10 +209,14 @@ int aesd_init_module(void)
     }
     memset(&aesd_device,0,sizeof(struct aesd_dev));
 
+
     /**
      * TODO: initialize the AESD specific portion of the device
      */
     mutex_init(&aesd_device.lock);
+    aesd_device.wbuf = kmalloc(INIT_WBUF_SIZE, GFP_KERNEL);  // assume that's no error 
+    aesd_device.wpos = 0;
+    aesd_device.wsize = INIT_WBUF_SIZE;
     result = aesd_setup_cdev(&aesd_device);
 
     if( result ) {

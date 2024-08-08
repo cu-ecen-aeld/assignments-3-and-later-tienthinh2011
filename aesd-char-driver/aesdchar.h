@@ -38,12 +38,16 @@
 #define PDEBUG DEBUG_LOG
 #define PERROR ERROR_LOG
 
+#define INIT_WBUF_SIZE  256
+
 struct aesd_dev
 {
     /**
      * TODO: Add structure(s) and locks needed to complete assignment requirements
-     */
-
+    */
+    size_t wsize;           // size of current write buffer wbuf
+    size_t wpos;            // position of current write buffer
+    char* wbuf;             // bufer of current write bufer
 	struct mutex lock;     /* mutual exclusion semaphore     */
     struct aesd_circular_buffer buffer;
     struct cdev cdev;     /* Char device structure      */
