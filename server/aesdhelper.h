@@ -25,6 +25,9 @@
 
 #include "queue.h"
 
+#ifndef USE_AESD_CHAR_DEVICE
+#define USE_AESD_CHAR_DEVICE 1
+#endif
 struct thread_data {
     /* data */
     pthread_t thread; // pointer to thread itself

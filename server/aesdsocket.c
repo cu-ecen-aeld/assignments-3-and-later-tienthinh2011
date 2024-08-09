@@ -20,6 +20,7 @@
 #include "queue.h"
 
 
+
 #define DEBUG_LOG(msg,...) printf("aesdsocket: " msg "\n" , ##__VA_ARGS__)
 #define ERROR_LOG(msg,...) printf("aesdsocket ERROR: " msg "\n" , ##__VA_ARGS__)
 
@@ -142,7 +143,7 @@ int main (int argc, char* argv[])
     
     memset(&hints, 0, sizeof hints); // make sure the struct is empty
     hints.ai_family = AF_INET;     // don't care IPv4 or IPv6
-    // hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
     hints.ai_flags = AI_PASSIVE;     // fill in my IP for me
     if ((status = getaddrinfo(NULL, AESD_PORT, &hints, &servinfo)) != 0) {
         fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status)); // gai_strerror only for error code of getaddrinfo function
@@ -180,8 +181,9 @@ int main (int argc, char* argv[])
         exit(1);
     } // End of ​From ​Beej's Guide to Network Programming
     #else 
-    sockfd = socket(servinfo->ai_family, servinfo->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC , servinfo->ai_protocol);
-    if (sockfd == 0) {
+    // sockfd = socket(servinfo->ai_family, servinfo->ai_socktype | SOCK_NONBLOCK | SOCK_CLOEXEC , servinfo->ai_protocol);
+    sockfd = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
+    if (sockfd == -1) {
         fprintf(stderr, "could not create socket\n");
         exit (-1);
     } else {
@@ -239,6 +241,7 @@ int main (int argc, char* argv[])
 
 #ifndef USE_AESD_CHAR_DEVICE
     // Create timer and thread for writing timestamp
+    DEBUG_LOG("Create timer and thread for writing timestamp");
     struct thread_data td;
     memset(&td, 0, sizeof(struct thread_data));
     td.pMutex = &mutex;
@@ -265,8 +268,8 @@ int main (int argc, char* argv[])
         perror("timer_settime");
         exit(EXIT_FAILURE);
     } // end of timer 
-#endif
-    
+#endif    
+    DEBUG_LOG("Preparing to accept new connection");
     // 6. Accepting the connection 
     int clientfd = 0;
     bool isClientConnected = false;
